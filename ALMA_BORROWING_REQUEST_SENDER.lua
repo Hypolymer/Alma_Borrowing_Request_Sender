@@ -80,6 +80,23 @@ function ProcessItems()
 	end
 end
 
+local function IsType(o, t)
+	if ((o and type(o) == "userdata") and (t and type(t) == "string")) then
+		local comparisonType = Types["System.Type"].GetType(t);
+
+		if (comparisonType) then
+			-- The comparison type was successfully loaded so we can do a check
+			-- that the object can be assigned to the comparison type.
+			return comparisonType:IsAssignableFrom(o:GetType()), true;
+		else
+			-- The comparison type was could not be loaded so we can only check
+			-- based on the names of the types.
+			return (o:GetType().FullName == t), false;
+		end
+	end
+
+	return false, false;
+end
 
 function cleanup_field(title)
  
@@ -477,6 +494,8 @@ local templine = nil;
 				break;
     		else
     			pickup_location = "nothing";
+				ExecuteCommand("AddNote",{transactionNumber_int, "From Alma Borrowing Request Sender: The ILLiad NVTGC for the user on this TN was not found in the Addon's sublibraries.txt file.  Please update the sublibraries.txt file, reinstall the Addon, and try again."});
+				
    			end
   		end
   	sublibraries:close();
@@ -752,6 +771,7 @@ local templine = nil;
 				break;
     		else
     			pickup_location = "nothing";
+				ExecuteCommand("AddNote",{transactionNumber_int, "From Alma Borrowing Request Sender: The ILLiad NVTGC for the user on this TN was not found in the Addon's sublibraries.txt file.  Please update the sublibraries.txt file, reinstall the Addon, and try again."});
    			end
   		end
   	sublibraries:close();
@@ -1082,6 +1102,9 @@ LogDebug(sru_url);
 				LogDebug("The AVE lookup did not return any electronic items to create a Hold request. Attempting AVA lookup.");
 				if analyze_ava_tag(responseString) ~= true then
 					LogDebug("The AVE lookup and AVA lookup did not return any available items to create a Hold request.");
+					ExecuteCommand("AddNote",{transactionNumber_int,"From Alma Borrowing Request Sender: The AVE lookup and AVA lookup showed available records but did not return any available items to create a Hold request. Routing to: " .. Settings.ItemFailHoldRequestQueue});
+					ExecuteCommand("AddNote",{transactionNumber_int,responseString});
+					ExecuteCommand("Route",{transactionNumber_int, Settings.ItemFailHoldRequestQueue});
 				end
 			end
 		end
@@ -1091,6 +1114,9 @@ LogDebug(sru_url);
 				LogDebug("The AVA lookup did not return any physical items to create a Hold request. Attempting AVE lookup.");
 				if analyze_ave_tag(responseString) ~= true then
 					LogDebug("The AVA lookup and AVE lookup did not return any available items to create a Hold request");
+					ExecuteCommand("AddNote",{transactionNumber_int,"From Alma Borrowing Request Sender: The AVA lookup and AVE lookup showed available records but did not return any available items to create a Hold request. Routing to: " .. Settings.ItemFailHoldRequestQueue});
+					ExecuteCommand("AddNote",{transactionNumber_int,responseString});
+					ExecuteCommand("Route",{transactionNumber_int, Settings.ItemFailHoldRequestQueue});
 				end
 			end
 		end
