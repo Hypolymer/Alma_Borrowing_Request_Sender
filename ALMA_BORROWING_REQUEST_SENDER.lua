@@ -19,6 +19,8 @@ local Settings = {};
 Settings.Alma_Base_URL = GetSetting("Alma_Base_URL");
 Settings.Alma_Users_API_Key = GetSetting("Alma_Users_API_Key");
 Settings.Alma_Bibs_API_Key = GetSetting("Alma_Bibs_API_Key");
+Settings.SRU_Lookup_Username = GetSetting("SRU_Lookup_Username");
+Settings.SRU_Lookup_Password = GetSetting("SRU_Lookup_Password");
 Settings.ItemSearchQueue = GetSetting("ItemSearchQueue");
 Settings.ItemSuccessQueue = GetSetting("ItemSuccessQueue");
 Settings.ItemFailQueue = GetSetting("ItemFailQueue");
@@ -80,24 +82,6 @@ function ProcessItems()
 	end
 end
 
-local function IsType(o, t)
-	if ((o and type(o) == "userdata") and (t and type(t) == "string")) then
-		local comparisonType = Types["System.Type"].GetType(t);
-
-		if (comparisonType) then
-			-- The comparison type was successfully loaded so we can do a check
-			-- that the object can be assigned to the comparison type.
-			return comparisonType:IsAssignableFrom(o:GetType()), true;
-		else
-			-- The comparison type was could not be loaded so we can only check
-			-- based on the names of the types.
-			return (o:GetType().FullName == t), false;
-		end
-	end
-
-	return false, false;
-end
-
 function cleanup_field(title)
  
 -- " = &quot;
@@ -112,6 +96,25 @@ cleaned_string = cleaned_string:gsub('&', '&amp;'):gsub('"', '&quot;'):gsub("'",
 
 return cleaned_string;
 end
+
+
+
+-- this function converts a string to base64
+-- https://devforum.roblox.com/t/base64-encoding-and-decoding-in-lua/1719860
+function to_base64(data)
+    local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    return ((data:gsub('.', function(x) 
+        local r,b='',x:byte()
+        for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
+        return r;
+    end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+        if (#x < 6) then return '' end
+        local c=0
+        for i=1,6 do c=c+(x:sub(i,i)=='1' and 2^(6-i) or 0) end
+        return b:sub(c+1,c+1)
+    end)..({ '', '==', '=' })[#data%3+1])
+end
+
 
 function validate_isbn()
 LogDebug("Initializing ISBN Validator.");
@@ -1037,6 +1040,19 @@ local sru_url = "";
 local records_found = "";
 local responseString = "";
 
+local use_password = false;
+local password_and_key = "";
+
+local base64mix = "";
+
+
+if Settings.SRU_Lookup_Username ~= "" and Settings.SRU_Lookup_Password ~= "" then
+		password_and_key = Settings.SRU_Lookup_Username .. ":" .. Settings.SRU_Lookup_Password;
+		base64mix = to_base64(password_and_key)
+		--LogDebug("Base64 mix is: " ..  base64mix);
+		use_password = true;
+end
+
 if isbn == "" and oclc_number == "" then
 	LogDebug("No ISBN or OCLC Number found in Transaction.  Please add the ISBN or OCLC Number and reprocess Transasction.");
 	-- Route for review (put config in for queue name)
@@ -1066,6 +1082,9 @@ LogDebug(sru_url);
 		webClient.Headers:Clear();
 		webClient.Headers:Add("Content-Type", "application/xml; charset=UTF-8");
 		webClient.Headers:Add("Accept", "application/xml; charset=UTF-8");
+		if use_password then
+			webClient.Headers:Add("Authorization", "Basic " .. base64mix);
+		end
 		LogDebug("Sending ISBN to Retrieve MMSID.");
 		responseString = webClient:DownloadString(sru_url);
 		--LogDebug(responseString);
@@ -1080,6 +1099,9 @@ LogDebug(sru_url);
 		webClient.Headers:Clear();
 		webClient.Headers:Add("Content-Type", "application/xml; charset=UTF-8");
 		webClient.Headers:Add("Accept", "application/xml; charset=UTF-8");
+		if use_password then
+			webClient.Headers:Add("Authorization", "Basic " .. base64mix);
+		end		
 		LogDebug("Sending OCLC Number to Retrieve MMSID.");
 		responseString = webClient:DownloadString(sru_url);
 		--LogDebug(responseString);	
