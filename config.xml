@@ -26,7 +26,13 @@
     </Setting>	
 	<Setting name="Alma_Bibs_API_Key" value="" type="string">
       <Description>Input your Alma Bibs API Key (Read access needed).</Description>
-    </Setting>	
+    </Setting>
+    <Setting name="SRU_Lookup_Username" value="" type="string">
+      <Description>This is the username for your SRU Lookup.  Leave blank if you do not use a username and password.</Description>
+    </Setting>
+	<Setting name="SRU_Lookup_Password" value="" type="string">
+      <Description>This is the password for your SRU Lookup.  Leave blank if you do not use a username and password.</Description>
+    </Setting>
 	<Setting name="EnableSendingBorrowingRequests" value="true" type="boolean">
       <Description>This setting determines if you want to enable sending Borrowing Requests to Alma.</Description>
     </Setting>	
