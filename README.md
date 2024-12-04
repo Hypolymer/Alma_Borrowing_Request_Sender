@@ -5,9 +5,9 @@ Check out the Alma Borrowing Request Sender wiki for installation instructions:
 https://github.com/Hypolymer/Alma_Borrowing_Request_Sender/wiki
 
 This Server Addon was developed by: 
-- Bill Jones (SUNY Geneseo)
-- Tim Jackson (SUNY Libraries Shared Services)
-- Angela Persico (University at Albany)
+- Bill Jones (SUNY Geneseo) jonesw@geneseo.edu
+- Tim Jackson (SUNY Libraries Shared Services) Timothy.Jackson@suny.edu
+- Angela Persico (University at Albany) apersico@albany.edu
 
 A few details about the ILLiad Addon:
 - The purpose of this Addon is to send Borrowing requests from ILLiad to Alma, and Hold requests for owned items
