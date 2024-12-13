@@ -9,7 +9,7 @@
   <Forms />
   <Permissions />
   <Settings>
-    <Setting name="AddonWorkerName" value="HoldOnly" type="string">
+    <Setting name="AddonWorkerName" value="HoldAndBorrowing" type="string">
       <Description>This is the name you give the Addon for the rerun checker. If you are using more than one Addon, give each Addon a different name.</Description>
     </Setting>
     <Setting name="Alma_Base_URL" value="https://api-na.hosted.exlibrisgroup.com/almaws/v1" type="string">
@@ -19,15 +19,15 @@
       <Description>This is your institutional Alma Code.  Example:  01SUNY_GEN</Description>
     </Setting>
 	<Setting name="Full_Alma_URL" value="" type="string">
-      <Description>This is your Full Alma URL (with no slash at the end). Example: https://suny-gen.alma.exlibrisgroup.com</Description>
+      <Description>This is your Full Alma URL. Example: https://suny-gen.alma.exlibrisgroup.com</Description>
     </Setting>
     <Setting name="Alma_Users_API_Key" value="" type="string">
       <Description>Input your Alma Users API Key (Read and Write access needed).</Description>
     </Setting>	
-	<Setting name="Alma_Bibs_API_Key" value="" type="string">
+    <Setting name="Alma_Bibs_API_Key" value="" type="string">
       <Description>Input your Alma Bibs API Key (Read access needed).</Description>
-    </Setting>
-    <Setting name="SRU_Lookup_Username" value="" type="string">
+    </Setting>	
+	<Setting name="SRU_Lookup_Username" value="" type="string">
       <Description>This is the username for your SRU Lookup.  Leave blank if you do not use a username and password.</Description>
     </Setting>
 	<Setting name="SRU_Lookup_Password" value="" type="string">
@@ -41,7 +41,7 @@
     </Setting>
     <Setting name="PreferElectronicOverPrintForHoldRequests" value="true" type="boolean">
       <Description>This setting determines if you want to use electronic items for Hold request fulfillment before using physical print items.</Description>
-    </Setting>
+    </Setting>		
     <Setting name="ItemSearchQueue" value="ALMA_RS_TEST" type="string">
       <Description>The queue the Addon will monitor to process new Borrowing requests.</Description>
     </Setting>
@@ -51,29 +51,38 @@
     <Setting name="ItemFailQueue" value="ALMA_RS_FAILURE" type="string">
       <Description>The queue a Transaction will be moved to if the Borrowing Request Alma API call fails.</Description>
     </Setting>
+    <Setting name="ItemInExcludedLocationNeedsReviewQueue" value="NEEDS_REVIEW_ITEM_IN_EXCLUDED_LOCATION" type="string">
+      <Description>The queue a Transaction will be moved to for review if the requested item is in and Excluded Location as listed in the excludedlocations.txt file.</Description>
+    </Setting>
     <Setting name="ItemSuccessHoldRequestQueue" value="ALMA_HOLD_SUCCESS" type="string">
-      <Description>The queue a Transaction will be moved to if the Hold Request Alma API call fails.</Description>
+      <Description>The queue a Transaction will be moved to if the Hold Request is submitted to Alma successfully.</Description>
     </Setting>
     <Setting name="ItemFailHoldRequestQueue" value="ALMA_HOLD_FAILURE" type="string">
       <Description>The queue a Transaction will be moved to if the Hold Request Alma API call fails.</Description>
     </Setting>
+    <Setting name="NoISBNandNoOCLCNumberReviewQueue" value="Awaiting ISBN Lookup" type="string">
+      <Description>The queue a Transaction will be moved to moved to for review if the transaction is lacking both and ISBN and an OCLC Number.</Description>
+    </Setting>
     <Setting name="ElectronicItemSuccessQueue" value="ALMA_ELECTRONIC_ITEM_FOUND_SUCCESS" type="string">
       <Description>The queue a Transaction will be moved to if a local electronic item is found for the matching ISBN or OCLC Number.</Description>
-    </Setting>	
-    <Setting name="ElectronicItemReviewQueue" value="Electronic Item Missing URL" type="string">
-      <Description>The queue a Transaction will be moved to if a local electronic item is found for the matching ISBN or OCLC Number.</Description>
-    </Setting>		
-    <Setting name="NoISBNandNoOCLCNumberReviewQueue" value="Awaiting ISBN Lookup" type="string">
-      <Description>The queue a Transaction will be moved to if the Hold Request Alma API call fails.</Description>
-    </Setting>	
-    <Setting name="ItemInExcludedLocationNeedsReviewQueue" value="NEEDS_REVIEW_ITEM_IN_EXCLUDED_LOCATION" type="string">
-      <Description>The queue a Transaction will be moved to if the Borrowing Request Alma API call fails.</Description>
-    </Setting>
+    </Setting>			
 	<Setting name="ILLiadFieldforElectronicItemURL" value="Location" type="string">
       <Description>The name of the Transaction field you would like to use to store the URL for the found owned Electronic item (if URL is available)</Description>
-    </Setting>
+    </Setting>	
 	<Setting name="FieldtoUseForUserNameFromUsersTable" value="UserName" type="string">
-      <Description>When set to true, the username will be the SSN field from the Users table instead of the Username field from the Transactions table.</Description>
+      <Description>The name of the field in the ILLiad Users Table you want to use for the username to send to Alma during an API call.</Description>
+    </Setting>
+    <Setting name="ILLiad_Field_to_Store_PIDs" value="ItemInfo3" type="string">
+      <Description>The name of the ILLiad field that will be used to store multiple PIDs (Item IDs) to place item level holds in Alma.</Description>
+    </Setting>
+    <Setting name="MultiVolumeRewiewQueue" value="MultiVolume Review" type="string">
+      <Description>This is the name of the ILLiad queue used to route transactions that are multivolume and need review.</Description>
+    </Setting>	
+    <Setting name="PrimoPermalinkPrefix" value="" type="string">
+      <Description>This is the Primo permalink prefix. To get the permalink prefix, please open an eBook, click the Permalink button, and then copy the permalink, including the word 'alma' at the end of the permalink URL. Please do not include the individual MMSID for this configuration value (example: https://glocat.geneseo.edu/permalink/01SUNY_GEN/1q0kkbr/alma).</Description>
+    </Setting>	
+	<Setting name="UltimateDebug" value="false" type="boolean">
+      <Description>This setting determines if you want to enable sending Hold Requests to Alma.</Description>
     </Setting>
   </Settings>
   <Files>
