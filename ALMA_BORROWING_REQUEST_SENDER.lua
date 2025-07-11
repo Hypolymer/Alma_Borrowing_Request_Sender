@@ -58,6 +58,7 @@ check_allow_duplicate_requests_for_holds = false;
 check_allow_duplicate_requests_for_loans = false;
 check_user_has_current_loan = false;
 check_user_has_current_hold = false;
+tn_has_no_identifier = false;
 
 function Init()
 	LogDebug("Initializing ALMA BORROWING REQUEST SENDER Server Addon");
@@ -233,7 +234,7 @@ local isbn = isbn;
 
 if isbn == "" or isbn == nil then
 LogDebug("ISBN Validator > There is no ISBN available.  Skipping ISBN Validator.");
-return true
+return "missing ISBN";
 end
 
 local currentTN_int = GetFieldValue("Transaction", "TransactionNumber");
@@ -349,6 +350,7 @@ function splitString(inputStr)
 end
 
 function rerun_checker()
+	LogDebug("Initializing function rerun_checker");
     local has_it_run = false;
 	local currentTN_int = GetFieldValue("Transaction", "TransactionNumber");
 	local transactionNumber = luanet.import_type("System.Convert").ToDouble(currentTN_int);
@@ -370,6 +372,7 @@ function rerun_checker()
 		end			
 		has_it_run = true;	
 	end
+	LogDebug("rerun_checker > has_it_run equals: " .. tostring(has_it_run));
 	return has_it_run;
 end
 
@@ -902,6 +905,69 @@ function myerrorhandler( err )
 	end
 end
 
+
+
+
+
+
+function check_partners_list(partner)
+    LogDebug("Initializing function check_partners_list")
+    local currentTN = GetFieldValue("Transaction", "TransactionNumber")
+    local transactionNumber_int = luanet.import_type("System.Convert").ToDouble(currentTN)
+    local found_partner = false
+    local partners = assert(io.open(AddonInfo.Directory .. "\\partners.txt", "r"))
+    if partners == nil then
+        LogDebug("check_partners_list > The partners.txt file is empty.")
+    end
+
+    local alma_partner_code = ""
+    local first_split = ""
+    local second_split = ""
+    local found_partner_code = false
+    if partners ~= nil then
+        for line in partners:lines() do
+            first_split, second_split = line:match("([^,]+),([^,]+)")
+            if first_split == partner then
+                found_partner = true
+                alma_partner_code = second_split
+                LogDebug("check_partners_list > A matching partner was found on the partners.txt file: " .. alma_partner_code)
+                ExecuteCommand("AddNote", {transactionNumber_int, "check_partners_list > The partner  [" .. partner .. "] is on the partners.txt file."})
+                return alma_partner_code
+            end
+        end
+        partners:close()
+    end
+    if found_partner == false then
+        LogDebug("check_partners_list > There was not a matching item location found on the partners.txt file for " .. partner)
+        return false
+    end
+end
+
+
+
+-- Function to process the LendingString
+function process_lending_string()
+    LogDebug("Initializing function process_lending_string");
+
+    -- Get the LendingString field
+    local lendingstring = GetFieldValue("Transaction", "LendingString");
+
+    if lendingstring ~= "" then
+        -- Split the string and get the first symbol
+        local first_symbol = string.match(lendingstring, '([^,]+)');
+
+        if first_symbol and check_partners_list(first_symbol) then
+            LogDebug("Match found on partners.txt: " .. first_symbol);
+            return check_partners_list(first_symbol)
+        end
+    end
+
+    LogDebug("No match found");
+    return nil
+end
+
+
+
 function HandleContextProcessing()
 
 	local currentTN_int = GetFieldValue("Transaction", "TransactionNumber");
@@ -911,9 +977,18 @@ function HandleContextProcessing()
 	local real_isbn = GetFieldValue("Transaction", "ISSN");
 
 	if ProcessType == "Borrowing" then
-		if RequestType == "Loan" then		
+		if RequestType == "Loan" then	
+			LogDebug("Sleeping for 1 second");
+			os.execute("sleep 1");
+			LogDebug("HandleContextProcessing > Attempting to reset global variables");
+			LogDebug("HandleContextProcessing > Current values before reset:  hold_send_rerun_count: " .. tostring(hold_send_rerun_count) .. ". check_allow_duplicate_requests_for_holds: " .. tostring(check_allow_duplicate_requests_for_holds) .. ". check_allow_duplicate_requests_for_loans: " .. tostring(check_allow_duplicate_requests_for_loans) .. ". check_user_has_current_hold: " .. tostring(check_user_has_current_hold) .. ". check_user_has_current_hold: " .. tostring(check_user_has_current_hold) .. ".");
+			hold_send_rerun_count = 0;
+			check_allow_duplicate_requests_for_holds = false;
+			check_allow_duplicate_requests_for_loans = false;
+			check_user_has_current_loan = false;
+			check_user_has_current_hold = false;
+			LogDebug("HandleContextProcessing > Reset values:  hold_send_rerun_count: " .. tostring(hold_send_rerun_count) .. ". check_allow_duplicate_requests_for_holds: " .. tostring(check_allow_duplicate_requests_for_holds) .. ". check_allow_duplicate_requests_for_loans: " .. tostring(check_allow_duplicate_requests_for_loans) .. ". check_user_has_current_hold: " .. tostring(check_user_has_current_hold) .. ". check_user_has_current_hold: " .. tostring(check_user_has_current_hold) .. ".");
 			if rerun_checker() == false then
-				ExecuteCommand("AddNote",{transactionNumber, "The ALMA BORROWING REQUEST SENDER Addon: " .. Settings.AddonWorkerName .. " ran on this transaction."});
 				local allow_duplicate_checker_holds = check_allow_for_duplicate_requests_for_holds()
 				if allow_duplicate_checker_holds == true then
 					check_allow_duplicate_requests_for_holds = true;
@@ -927,6 +1002,8 @@ function HandleContextProcessing()
 				LogDebug('The PIDs value from ' .. Settings.ILLiad_Field_to_Store_PIDs .. ' is: [' .. pids .. ']');
 
 				if pids ~= "" then
+				LogDebug("HandleContextProcessing > Leaving Note: " .. Settings.AddonWorkerName .. " ran on this transaction.");
+				ExecuteCommand("AddNote",{transactionNumber, "The ALMA BORROWING REQUEST SENDER Addon: " .. Settings.AddonWorkerName .. " ran on this transaction."});
 					local i = "";
 					local x = 0;
 					local single_pid = "";
@@ -946,48 +1023,43 @@ function HandleContextProcessing()
 					end
 				end	
 				
-				if pids == "" then	
-				
-					local good_isbn = validate_isbn(real_isbn);				
-					if good_isbn then
-						local messageSent = false;
-						local response;
-		
-						messageSent, response = pcall(build_hold_request);
-				
-						if (messageSent == false) then
-							LogDebug('There was an error in the Alma_API from the build_hold_request function.  Sending to error handler.');		
-							return myerrorhandler(response);		
+				if pids == "" then
+					LogDebug("HandleContextProcessing > Leaving Note: " .. Settings.AddonWorkerName .. " ran on this transaction.");
+					ExecuteCommand("AddNote", {transactionNumber, "The ALMA BORROWING REQUEST SENDER Addon: " .. Settings.AddonWorkerName .. " ran on this transaction."});
+					
+					local good_isbn = validate_isbn(real_isbn);
+					LogDebug("Validate_ISBN function returned: " .. tostring(good_isbn));
+					local OCLCNumberField = GetFieldValue("Transaction", "ESPNumber");
+					
+					if good_isbn == true or OCLCNumberField ~= "" then
+						local messageSent, response = pcall(build_hold_request);
+						if not messageSent then
+							LogDebug('There was an error in the Alma_API from the build_hold_request function. Sending to error handler.');
+							return myerrorhandler(response);
 						else
 							LogDebug('ALMA BORROWING REQUEST SENDER executed successfully.');
 						end
-					end	
-					
-					if not good_isbn then
-
-						local fixed_isbn = extract_isbn(real_isbn)
-						local messageSent2 = false;
-						local response2;
+					else
+						local fixed_isbn = extract_isbn(real_isbn);
+						LogDebug("Extract_ISBN returned: " .. tostring(fixed_isbn));
 						
-						if fixed_isbn ~= false then
-		
-						messageSent2, response2 = pcall(build_hold_request);
-				
-							if (messageSent2 == false) then
-								LogDebug('There was an error in the Alma_API from the build_hold_request function with extracted ISBN.  Sending to error handler.');		
-								return myerrorhandler(response2);		
+						if fixed_isbn ~= true and OCLCNumberField == "" then
+							LogDebug("The transaction does not have a valid ISBN and the OCLC Number field is blank");
+							ExecuteCommand("AddNote", {transactionNumber, "Alma Borrowing Request Sender > Unable to extract ISBN from [" .. real_isbn .. "] and the OCLC Number is blank"});
+							ExecuteCommand("Route", {transactionNumber, Settings.NoISBNandNoOCLCNumberReviewQueue});
+						elseif fixed_isbn == true or OCLCNumberField ~= "" then
+							local messageSent2, response2 = pcall(build_hold_request);
+							if not messageSent2 then
+								LogDebug('There was an error in the Alma_API from the build_hold_request function with extracted ISBN. Sending to error handler.');
+								return myerrorhandler(response2);
 							else
 								LogDebug('ALMA BORROWING REQUEST SENDER executed successfully.');
 							end
 						end
-						if fixed_isbn == false then
-							ExecuteCommand("AddNote",{transactionNumber, "Unable to extract ISBN from " .. real_isbn});
-							ExecuteCommand("Route",{transactionNumber, Settings.NoISBNandNoOCLCNumberReviewQueue});
-						end
 					end
 				end
-			end	
-			if myPIDchecker == false then
+	
+			if myPIDchecker == false then		
 				local list_of_failed_PIDs = table.concat(myFailedPIDs, ", ");
 				LogDebug("There was an issue sending Hold Request with PID(s): " .. list_of_failed_PIDs .. ".  Routing to failure queue: " .. Settings.ItemFailHoldRequestQueue);
 				ExecuteCommand("AddNote",{transactionNumber, "There was an issue sending Hold Request with PID(s): " .. list_of_failed_PIDs .. ".  Routing to failure queue: " .. Settings.ItemFailHoldRequestQueue .. ". Check Transaction Notes."});
@@ -1005,15 +1077,8 @@ function HandleContextProcessing()
 				end
 			end			
 		end
-		LogDebug("HandleContextProcessing > Attempting to reset global variables");
-		LogDebug("HandleContextProcessing > Current values before reset:  hold_send_rerun_count: " .. tostring(hold_send_rerun_count) .. ". check_allow_duplicate_requests_for_holds: " .. tostring(check_allow_duplicate_requests_for_holds) .. ". check_allow_duplicate_requests_for_loans: " .. tostring(check_allow_duplicate_requests_for_loans) .. ". check_user_has_current_hold: " .. tostring(check_user_has_current_hold) .. ". check_user_has_current_hold: " .. tostring(check_user_has_current_hold) .. ".");
-		hold_send_rerun_count = 0;
-		check_allow_duplicate_requests_for_holds = false;
-		check_allow_duplicate_requests_for_loans = false;
-		check_user_has_current_loan = false;
-		check_user_has_current_hold = false;
-		LogDebug("HandleContextProcessing > Reset values:  hold_send_rerun_count: " .. tostring(hold_send_rerun_count) .. ". check_allow_duplicate_requests_for_holds: " .. tostring(check_allow_duplicate_requests_for_holds) .. ". check_allow_duplicate_requests_for_loans: " .. tostring(check_allow_duplicate_requests_for_loans) .. ". check_user_has_current_hold: " .. tostring(check_user_has_current_hold) .. ". check_user_has_current_hold: " .. tostring(check_user_has_current_hold) .. ".");
 	end
+end
 end
 
 function GetNVTGC()
@@ -1173,6 +1238,13 @@ local loan_place = GetFieldValue("Transaction", "LoanPlace");
 local loan_edition = GetFieldValue("Transaction", "LoanEdition");
 local oclc_number = GetFieldValue("Transaction", "ESPNumber");
 local usernotes = usernote_appender()
+local matching_partner = process_lending_string()
+
+local partner_xml = "";
+if matching_partner ~= false then
+	partner_xml = "<partner>" .. tostring(matching_partner) .. "</partner>";
+end
+
 
 local ml = '<?xml version="1.0" encoding="ISO-8859-1"?><user_resource_sharing_request>';
 	ml = ml .. '<format desc="string">';
@@ -1185,6 +1257,7 @@ local ml = '<?xml version="1.0" encoding="ISO-8859-1"?><user_resource_sharing_re
 	ml = ml .. '<citation_type desc="string">';
 	ml = ml .. '<xml_value>BK</xml_value>';
 	ml = ml .. '</citation_type>';
+	ml = ml .. partner_xml;
 	if usernotes == "" then
 	ml = ml .. '<note>Request created from ILLiad TN: ' .. transactionNumber_int .. '</note>';
 	end
@@ -1228,10 +1301,12 @@ LogDebug("build_request > Alma Message: " .. ml);
 local alma_url = Settings.Alma_Base_URL .. '/users/' .. user .. '/resource-sharing-requests?user_id_type=all_unique&override_blocks=true&apikey=' .. Settings.Alma_Users_API_Key;
 local alma_url_for_printing = Settings.Alma_Base_URL .. '/users/' .. user .. '/resource-sharing-requests?user_id_type=all_unique&override_blocks=true&apikey=YOUR_KEY';
 
+LogDebug("The check_allow_duplicate_requests_for_loans value is set to: [" .. tostring(check_allow_duplicate_requests_for_loans) .. "]");
+
 -- check to see if duplicate requests are allowed
 if check_allow_duplicate_requests_for_loans == true then
-	local alma_url = Settings.Alma_Base_URL .. '/users/' .. user .. '/resource-sharing-requests?user_id_type=all_unique&override_blocks=true&allow_same_request=true&apikey=' .. Settings.Alma_Users_API_Key;
-	local alma_url_for_printing = Settings.Alma_Base_URL .. '/users/' .. user .. '/resource-sharing-requests?user_id_type=all_unique&override_blocks=true&allow_same_request=true&apikey=YOUR_KEY';
+	alma_url = Settings.Alma_Base_URL .. '/users/' .. user .. '/resource-sharing-requests?user_id_type=all_unique&override_blocks=true&allow_same_request=true&apikey=' .. Settings.Alma_Users_API_Key;
+	alma_url_for_printing = Settings.Alma_Base_URL .. '/users/' .. user .. '/resource-sharing-requests?user_id_type=all_unique&override_blocks=true&allow_same_request=true&apikey=YOUR_KEY';
 end
 	
 		--LogDebug("Borrowing Message prepared for sending: " .. ml);
@@ -1881,6 +1956,21 @@ end -- function
 
 function build_hold_request()
 LogDebug("Initializing function build_hold_request");
+
+if Settings.EnableSendingHoldRequests == false then
+	if Settings.EnableSendingBorrowingRequests == true then
+		LogDebug("The setting EnableSendingHoldRequests is set to false and EnableSendingBorrowingRequests is set to true.  Attempting to send Borrowing request.");
+		build_request()
+	end
+	if Settings.EnableSendingBorrowingRequests == false then
+	LogDebug("The settings: EnableSendingHoldRequests and EnableSendingBorrowingRequests are set to false. One of these settings must be set to true for the Addon to function.");
+	return true;
+	end
+end
+
+if Settings.EnableSendingHoldRequests == true then
+LogDebug("The setting EnableSendingHoldRequests is set to true.  Executing build_hold_request function.");
+
 local currentTN = GetFieldValue("Transaction", "TransactionNumber");
 local transactionNumber_int = luanet.import_type("System.Convert").ToDouble(currentTN);
 
@@ -1975,134 +2065,135 @@ LogDebug(sru_url);
 		if used_oclc_number then
 			LogDebug("build_hold_request > This number of records were found for OCLC Number " .. oclc_number .. ": " .. records_found);
 		end
-				
-		if Settings.PreferElectronicOverPrintForHoldRequests == true then	
-			local ava_lookup_fail = false;
-			local ave_lookup_fail = false;
-			local check_print_override = check_print_override()
-			if check_print_override == true then
-				ave_lookup_fail = true;
-			end
-			if not check_print_override then
-				local analyze_ave_tag = analyze_ave_tag(responseString)
-				 LogDebug("build_hold_request > analyze_ave_tag: " .. tostring(analyze_ave_tag));
-				if analyze_ave_tag ~= true then
-					LogDebug("build_hold_request > The AVE lookup did not return any electronic items to create a Hold request. Attempting AVA Lookup.");
+		if Settings.EnableSendingHoldRequests == true then		
+			if Settings.PreferElectronicOverPrintForHoldRequests == true then	
+				local ava_lookup_fail = false;
+				local ave_lookup_fail = false;
+				local check_print_override = check_print_override()
+				if check_print_override == true then
 					ave_lookup_fail = true;
 				end
-			end
-			LogDebug("build_hold_request > ave_lookup_fail: " .. tostring(ave_lookup_fail));
-			if ave_lookup_fail == true then
-			local analyze_ava_tag = analyze_ava_tag(responseString)
-				if analyze_ava_tag ~= true then
-					LogDebug("build_hold_request > The AVA lookup did not return any available print items to create a Hold request.");
-					--ExecuteCommand("AddNote",{transactionNumber_int,"The AVA lookup did not return any available print items to create a Hold request."});
-					ava_lookup_fail = true;
+				if not check_print_override then
+					local analyze_ave_tag = analyze_ave_tag(responseString)
+					 LogDebug("build_hold_request > analyze_ave_tag: " .. tostring(analyze_ave_tag));
+					if analyze_ave_tag ~= true then
+						LogDebug("build_hold_request > The AVE lookup did not return any electronic items to create a Hold request. Attempting AVA Lookup.");
+						ave_lookup_fail = true;
+					end
 				end
-			end
-			if ava_lookup_fail == true then
+				LogDebug("build_hold_request > ave_lookup_fail: " .. tostring(ave_lookup_fail));
 				if ave_lookup_fail == true then
-					if Settings.EnableSendingBorrowingRequests == true then
-						if check_user_has_current_loan == false then
-							if check_user_has_current_hold == false then
-								LogDebug("build_hold_request E over P > The AVE lookup and AVA lookup did not return any available items to create a Hold request. The user does not have an active hold or loan on the item. Attempting to send Borrowing request.");
-								build_request()
-							end
-						end
-						if check_user_has_current_loan == false then
-							if check_user_has_current_hold == true then
-								if check_allow_duplicate_requests_for_loans == true then
-									LogDebug("build_hold_request E over P > The AVA and AVE lookup returned zero results, and the patron has the item on hold. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
-									ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on hold and on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
+				local analyze_ava_tag = analyze_ava_tag(responseString)
+					if analyze_ava_tag ~= true then
+						LogDebug("build_hold_request > The AVA lookup did not return any available print items to create a Hold request.");
+						--ExecuteCommand("AddNote",{transactionNumber_int,"The AVA lookup did not return any available print items to create a Hold request."});
+						ava_lookup_fail = true;
+					end
+				end
+				if ava_lookup_fail == true then
+					if ave_lookup_fail == true then
+						if Settings.EnableSendingBorrowingRequests == true then
+							if check_user_has_current_loan == false then
+								if check_user_has_current_hold == false then
+									LogDebug("build_hold_request E over P > The AVE lookup and AVA lookup did not return any available items to create a Hold request. The user does not have an active hold or loan on the item. Attempting to send Borrowing request.");
 									build_request()
 								end
 							end
-						end
-						if check_user_has_current_loan == true then
-							if check_user_has_current_hold == false then
-								if check_allow_duplicate_requests_for_loans == true then
-									LogDebug("build_hold_request E over P > The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
-									ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
-									build_request()
+							if check_user_has_current_loan == false then
+								if check_user_has_current_hold == true then
+									if check_allow_duplicate_requests_for_loans == true then
+										LogDebug("build_hold_request E over P > The AVA and AVE lookup returned zero results, and the patron has the item on hold. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
+										ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on hold and on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
+										build_request()
+									end
 								end
 							end
-						end								
-						if check_user_has_current_loan == true then
-							if check_user_has_current_hold == true then
-								if check_allow_duplicate_requests_for_loans == true then
-									LogDebug("build_hold_request E over P > The AVA and AVE lookup returned zero results, and the patron has the item on hold and on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
-									ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
-									build_request()
+							if check_user_has_current_loan == true then
+								if check_user_has_current_hold == false then
+									if check_allow_duplicate_requests_for_loans == true then
+										LogDebug("build_hold_request E over P > The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
+										ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
+										build_request()
+									end
+								end
+							end								
+							if check_user_has_current_loan == true then
+								if check_user_has_current_hold == true then
+									if check_allow_duplicate_requests_for_loans == true then
+										LogDebug("build_hold_request E over P > The AVA and AVE lookup returned zero results, and the patron has the item on hold and on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
+										ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
+										build_request()
+									end
 								end
 							end
 						end
 					end
 				end
+				
 			end
 			
-		end
-		
-		if Settings.PreferElectronicOverPrintForHoldRequests == false then	
-			local ava_lookup_fail = false;
-			local ave_lookup_fail = false;
-			local check_electronic_override = check_electronic_override()
-			if check_electronic_override == true then
-				ava_lookup_fail = true;
-			end
-			if not check_electronic_override then
-				local analyze_ava_tag = analyze_ava_tag(responseString)
-				 LogDebug("build_hold_request > analyze_ava_tag: " .. tostring(analyze_ava_tag));
-				if analyze_ava_tag ~= true then
-					LogDebug("build_hold_request > The AVA lookup did not return any physical items to create a Hold request. Attempting AVE Lookup.");
-					--ExecuteCommand("AddNote",{transactionNumber_int,responseString});
+			if Settings.PreferElectronicOverPrintForHoldRequests == false then	
+				local ava_lookup_fail = false;
+				local ave_lookup_fail = false;
+				local check_electronic_override = check_electronic_override()
+				if check_electronic_override == true then
 					ava_lookup_fail = true;
 				end
-			end
-			LogDebug("build_hold_request > ava_lookup_fail: " .. tostring(ava_lookup_fail));
-			if ava_lookup_fail == true then
-				local analyze_ave_tag = analyze_ave_tag(responseString)
-				if analyze_ave_tag ~= true then
-					LogDebug("build_hold_request > The AVE lookup lookup did not return any electronic items to create a Hold request.");
-					ExecuteCommand("AddNote",{transactionNumber_int,"The AVE lookup lookup did not return any electronic items to create a Hold request."});
-					ave_lookup_fail = true;
-					-- ExecuteCommand("AddNote",{transactionNumber_int,"From Alma Borrowing Request Sender: The AVA lookup and AVE lookup showed available records but did not return any available items to create a Hold request. Routing to: " .. Settings.ItemFailHoldRequestQueue});
-					-- ExecuteCommand("AddNote",{transactionNumber_int,responseString});
-					-- ExecuteCommand("Route",{transactionNumber_int, Settings.ItemFailHoldRequestQueue});
+				if not check_electronic_override then
+					local analyze_ava_tag = analyze_ava_tag(responseString)
+					 LogDebug("build_hold_request > analyze_ava_tag: " .. tostring(analyze_ava_tag));
+					if analyze_ava_tag ~= true then
+						LogDebug("build_hold_request > The AVA lookup did not return any physical items to create a Hold request. Attempting AVE Lookup.");
+						--ExecuteCommand("AddNote",{transactionNumber_int,responseString});
+						ava_lookup_fail = true;
+					end
 				end
-			end
-			if ave_lookup_fail == true then
+				LogDebug("build_hold_request > ava_lookup_fail: " .. tostring(ava_lookup_fail));
+				if ava_lookup_fail == true then
+					local analyze_ave_tag = analyze_ave_tag(responseString)
+					if analyze_ave_tag ~= true then
+						LogDebug("build_hold_request > The AVE lookup lookup did not return any electronic items to create a Hold request.");
+						ExecuteCommand("AddNote",{transactionNumber_int,"The AVE lookup lookup did not return any electronic items to create a Hold request."});
+						ave_lookup_fail = true;
+						-- ExecuteCommand("AddNote",{transactionNumber_int,"From Alma Borrowing Request Sender: The AVA lookup and AVE lookup showed available records but did not return any available items to create a Hold request. Routing to: " .. Settings.ItemFailHoldRequestQueue});
+						-- ExecuteCommand("AddNote",{transactionNumber_int,responseString});
+						-- ExecuteCommand("Route",{transactionNumber_int, Settings.ItemFailHoldRequestQueue});
+					end
+				end
 				if ave_lookup_fail == true then
-					if Settings.EnableSendingBorrowingRequests == true then
-						if check_user_has_current_loan == false then
-							if check_user_has_current_hold == false then
-								LogDebug("build_hold_request P over E > The AVE lookup and AVA lookup did not return any available items to create a Hold request. The user does not have an active hold or loan on the item. Attempting to send Borrowing request.");
-								build_request()
-							end
-						end
-						if check_user_has_current_loan == false then
-							if check_user_has_current_hold == true then
-								if check_allow_duplicate_requests_for_loans == true then
-									LogDebug("build_hold_request P over E > The AVA and AVE lookup returned zero results, and the patron has the item on hold. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
-									ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on hold and on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
+					if ave_lookup_fail == true then
+						if Settings.EnableSendingBorrowingRequests == true then
+							if check_user_has_current_loan == false then
+								if check_user_has_current_hold == false then
+									LogDebug("build_hold_request P over E > The AVE lookup and AVA lookup did not return any available items to create a Hold request. The user does not have an active hold or loan on the item. Attempting to send Borrowing request.");
 									build_request()
 								end
 							end
-						end
-						if check_user_has_current_loan == true then
-							if check_user_has_current_hold == false then
-								if check_allow_duplicate_requests_for_loans == true then
-									LogDebug("build_hold_request P over E > The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
-									ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
-									build_request()
+							if check_user_has_current_loan == false then
+								if check_user_has_current_hold == true then
+									if check_allow_duplicate_requests_for_loans == true then
+										LogDebug("build_hold_request P over E > The AVA and AVE lookup returned zero results, and the patron has the item on hold. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
+										ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on hold and on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
+										build_request()
+									end
 								end
 							end
-						end								
-						if check_user_has_current_loan == true then
-							if check_user_has_current_hold == true then
-								if check_allow_duplicate_requests_for_loans == true then
-									LogDebug("build_hold_request P over E > The AVA and AVE lookup returned zero results, and the patron has the item on hold and on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
-									ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
-									build_request()
+							if check_user_has_current_loan == true then
+								if check_user_has_current_hold == false then
+									if check_allow_duplicate_requests_for_loans == true then
+										LogDebug("build_hold_request P over E > The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
+										ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
+										build_request()
+									end
+								end
+							end								
+							if check_user_has_current_loan == true then
+								if check_user_has_current_hold == true then
+									if check_allow_duplicate_requests_for_loans == true then
+										LogDebug("build_hold_request P over E > The AVA and AVE lookup returned zero results, and the patron has the item on hold and on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request.")
+										ExecuteCommand("AddNote",{transactionNumber_int,"The AVA and AVE lookup returned zero results, and the patron has the item on loan. However, there is a duplicate loan request override note.  Attempting to place borrowing request."});
+										build_request()
+									end
 								end
 							end
 						end
@@ -2272,4 +2363,5 @@ LogDebug(sru_url);
 			end
 		end
 	end -- if records_found == "0"
+	end -- if Settings.EnableSendingHoldRequests is set to true
 end -- function
