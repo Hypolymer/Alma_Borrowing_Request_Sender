@@ -23,4 +23,5 @@ Text files contained in the Addon for configuration:
 - The Addon uses a file called error_routing.txt to route specific API numerical errors to specific ILLiad queues
 - The Addon uses a file called sublibraries.txt to crosswalk between the ILLiad user NVTGC code (Example: ILL) and Alma Pickup Location code (Example: GENMN)
 - The Addon uses a file called process_type_router.txt to route specific process_type values (like MISSING, or IN BINDERY, or RESERVES) to specific queues
-- The Addon uses a file called excluded_locations.txt to make specific shelving locations unavailable for Hold requests 
+- The Addon uses a file called excluded_locations.txt to make specific shelving locations unavailable for Hold requests
+- The Addon uses a file called partners.txt to crosswalk between the ILLiad lending library code and the Alma partner library code, allowing staff to place borrowing requests directly to specific library partners in Alma
